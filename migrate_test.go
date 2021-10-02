@@ -14,7 +14,7 @@ import (
 	"github.com/blainemoser/TrySql/trysql"
 )
 
-var ts *trysql.TrySql
+var ts *trysql.TrySql = nil
 
 var db *database.Database = nil
 
