@@ -43,7 +43,7 @@ const testTableOne = `
 -- [DIRECTION] -- do not alter this line!
 -- add your DOWN SQL here
 
-[STATEMENT] DROP TABLE 'widgets';	
+[STATEMENT] DROP TABLE widgets;	
 `
 
 const testAlterTableOne = `

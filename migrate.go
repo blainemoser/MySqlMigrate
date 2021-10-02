@@ -44,7 +44,7 @@ const existsQuery = "SELECT count(*) as taken FROM migrations WHERE name = ?;"
 
 // Migration is a migration
 type Migration struct {
-	direction  string
+	direction  bool
 	migrations map[int]string
 	errors     []string
 	database   *database.Database
@@ -52,14 +52,32 @@ type Migration struct {
 }
 
 // Make creates a new migration
-func Make(database *database.Database, path, direction string) *Migration {
+func Make(database *database.Database, path string) *Migration {
 	return &Migration{
-		direction:  direction,
+		direction:  true,
 		migrations: nil,
 		errors:     nil,
 		database:   database,
 		path:       path,
 	}
+}
+
+func (m *Migration) MigrateUp() error {
+	m.direction = true
+	return m.migrate()
+}
+
+func (m *Migration) MigrateDown() error {
+	m.direction = false
+	return m.migrate()
+}
+
+func (m *Migration) migrate() error {
+	err := m.bootstrap()
+	if err != nil {
+		return err
+	}
+	return m.runMigrations()
 }
 
 func (m *Migration) runMigrations() error {
@@ -91,7 +109,7 @@ func (m *Migration) getSequenceIDs() []int {
 		sequenceIDs = append(sequenceIDs, sequence)
 	}
 	sort.Ints(sequenceIDs)
-	if m.direction == "down" {
+	if !m.direction {
 		sort.Sort(sort.Reverse(sort.IntSlice(sequenceIDs)))
 	}
 	return sequenceIDs
@@ -100,7 +118,7 @@ func (m *Migration) getSequenceIDs() []int {
 func (m *Migration) getProperties(id int, batchID int64) map[string]interface{} {
 	properties := make(map[string]interface{})
 	properties["migration_id"] = id
-	if m.direction == "up" {
+	if m.direction {
 		properties["migrated"] = "1"
 		properties["batch_id"] = strconv.FormatInt(batchID, 10)
 	} else {
@@ -110,7 +128,7 @@ func (m *Migration) getProperties(id int, batchID int64) map[string]interface{} 
 }
 
 func (m *Migration) getDirectionMessage() string {
-	if m.direction == "up" {
+	if m.direction {
 		return "Executed"
 	}
 	return "Reversed"
@@ -133,14 +151,6 @@ func (m *Migration) executeMigration(sql string, id int, direction string) error
 
 	fmt.Println(direction + " migration #" + strconv.Itoa(id))
 	return nil
-}
-
-func (m *Migration) Migrate() error {
-	err := m.bootstrap()
-	if err != nil {
-		return err
-	}
-	return m.runMigrations()
 }
 
 // Create makes a new migration file
@@ -400,12 +410,12 @@ func fileResult(keys []int, files map[int]string) ([]string, error) {
 func (m *Migration) getMigs() ([]map[string]interface{}, error) {
 	upOrDown := make([]interface{}, 0)
 	order := "ASC"
-	batch, err := m.getLastBatch(m.direction == "down")
+	batch, err := m.getLastBatch()
 	if err != nil {
 		return nil, err
 	}
 	batchStr := ""
-	if m.direction == "up" {
+	if m.direction {
 		upOrDown = append(upOrDown, "0")
 	} else {
 		upOrDown = append(upOrDown, "1")
@@ -422,7 +432,7 @@ func (m *Migration) getMigs() ([]map[string]interface{}, error) {
 
 func (m *Migration) getMigContents(contents string) string {
 	result := strings.Split(contents, "[DIRECTION]")
-	if m.direction == "up" {
+	if m.direction {
 		return result[0]
 	}
 
@@ -442,8 +452,8 @@ func nameInFile(name string, files []string, numFiles int, routineFailed *[]stri
 	}
 }
 
-func (m *Migration) getLastBatch(down bool) (int64, error) {
-	if !down {
+func (m *Migration) getLastBatch() (int64, error) {
+	if m.direction {
 		return 0, nil
 	}
 	result, err := m.database.QueryRaw(lastBatchQuery, nil)

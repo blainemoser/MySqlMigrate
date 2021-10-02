@@ -59,8 +59,8 @@ func TestSeed(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	m := Make(db, path, "up")
-	err = m.Migrate()
+	m := Make(db, path)
+	err = m.MigrateUp()
 	if err != nil {
 		t.Error(err)
 	}
@@ -74,7 +74,7 @@ func TestCreate(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	m := Make(db, path, "up")
+	m := Make(db, path)
 	fullPath, err := m.Create(f)
 	if err != nil {
 		t.Error(err)
@@ -112,7 +112,7 @@ func runFirstMigration(t *testing.T, path string) {
 		t.Error(err)
 		return
 	}
-	err = Make(db, path, "up").Migrate()
+	err = Make(db, path).MigrateUp()
 	if err != nil {
 		t.Error(err)
 		return
@@ -126,7 +126,7 @@ func runSecondMigration(t *testing.T, path string) {
 		t.Error(err)
 		return
 	}
-	err = Make(db, path, "up").Migrate()
+	err = Make(db, path).MigrateUp()
 	if err != nil {
 		t.Error(err)
 		return
@@ -140,7 +140,7 @@ func checkMigrateDown(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	err = Make(db, path, "down").Migrate()
+	err = Make(db, path).MigrateDown()
 	if err != nil {
 		t.Error(err)
 		return
@@ -149,7 +149,7 @@ func checkMigrateDown(t *testing.T) {
 }
 
 func createMigFile(f, path, migContent string) error {
-	m := Make(db, path, "up")
+	m := Make(db, path)
 	fullPath, err := m.Create(f)
 	if err != nil {
 		return err
@@ -188,16 +188,12 @@ func trySqlTD() {
 }
 
 func removeDB() {
-	var err error
-	err = clearTestDir()
+	err := clearTestDir()
 	if err != nil {
-		log.Panicln(err)
+		log.Println(err)
 	}
 	if db != nil {
-		_, err = db.Exec(fmt.Sprintf("DROP SCHEMA %s", testDBName), nil)
-		if err != nil {
-			log.Println(err)
-		}
+		db.Close()
 	}
 }
 
