@@ -73,7 +73,7 @@ Alter the SQL appropriately, for instance:
 
 [STATEMENT] DROP TABLE 'users';	
 ```
-Execute multiple statements in one migration by using `\[STATEMENT\]` to separate the queries.
+Execute multiple statements in one migration by using `[STATEMENT]` to separate the queries.
 
 Do not delete the line `-- [DIRECTION] -- do not alter this line!`, it delineates between the "up" SQL and the "down" SQL (which will be run if and when the migration is reversed).
 
