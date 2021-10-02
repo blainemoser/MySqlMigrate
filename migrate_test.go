@@ -118,6 +118,11 @@ func runFirstMigration(t *testing.T, path string) {
 		return
 	}
 	checkMigratedOne(t)
+	// Try run again; should have nothing to migrate
+	err = Make(db, path).MigrateUp()
+	if err != nil {
+		t.Error(err)
+	}
 }
 
 func runSecondMigration(t *testing.T, path string) {
