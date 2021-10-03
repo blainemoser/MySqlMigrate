@@ -46,7 +46,6 @@ const existsQuery = "SELECT count(*) as taken FROM migrations WHERE name = ?;"
 type Migration struct {
 	direction  bool
 	migrations map[int]string
-	errors     []string
 	database   *database.Database
 	path       string
 }
@@ -56,7 +55,6 @@ func Make(database *database.Database, path string) *Migration {
 	return &Migration{
 		direction:  true,
 		migrations: nil,
-		errors:     nil,
 		database:   database,
 		path:       path,
 	}
@@ -84,14 +82,14 @@ func (m *Migration) runMigrations() error {
 	batchID := time.Time.Unix(time.Now())
 	var sql string
 	var properties map[string]interface{}
-	direction := m.getDirectionMessage()
+	message := m.getDirectionMessage()
 	for _, id := range m.getSequenceIDs() {
 		if m.migrations[id] == "" {
 			continue
 		}
 		sql = m.migrations[id]
 		properties = m.getProperties(id, batchID)
-		err := m.executeMigration(sql, id, direction)
+		err := m.executeMigration(sql, id, message)
 		if err != nil {
 			return err
 		}
@@ -134,7 +132,7 @@ func (m *Migration) getDirectionMessage() string {
 	return "Reversed"
 }
 
-func (m *Migration) executeMigration(sql string, id int, direction string) error {
+func (m *Migration) executeMigration(sql string, id int, message string) error {
 
 	// Split by the individual statements in the query
 	sqlSplit := strings.Split(sql, "[STATEMENT]")
@@ -149,7 +147,7 @@ func (m *Migration) executeMigration(sql string, id int, direction string) error
 		}
 	}
 
-	fmt.Println(direction + " migration #" + strconv.Itoa(id))
+	fmt.Println(message + " migration #" + strconv.Itoa(id))
 	return nil
 }
 
@@ -233,22 +231,14 @@ func (m *Migration) seed() error {
 		return err
 	}
 	errs := make([]error, len(files))
-	result := make([]string, 0)
+	// result := make([]string, 0)
 	var migName string
 	for i := 0; i < len(files); i++ {
 		migName = files[i]
-		errs = append(errs, m.seedMigrationRecord(migName, i+1))
+		errs[i] = m.seedMigrationRecord(migName, i+1)
 	}
 	// Pull list any errors, if any
-	for _, err := range errs {
-		if err != nil {
-			result = append(result, err.Error())
-		}
-	}
-	if len(result) > 0 {
-		return errors.New(strings.Join(result, "; "))
-	}
-	return nil
+	return getErrors(errs)
 }
 
 func (m *Migration) seedMigrationRecord(name string, id int) error {
@@ -271,7 +261,7 @@ func (m *Migration) seedMigrationRecord(name string, id int) error {
 func (m *Migration) zeroDayProperties(id interface{}, name string) map[string]interface{} {
 	return map[string]interface{}{
 		"migration_id": id,
-		"batch_id":     "0",
+		"batch_id":     0,
 		"name":         name,
 		"migrated":     0,
 	}
@@ -510,4 +500,20 @@ func DirExists(path string) (bool, error) {
 		return false, nil
 	}
 	return true, err
+}
+
+func getErrors(errs []error) error {
+	if len(errs) < 1 {
+		return nil
+	}
+	result := make([]string, 0)
+	for _, err := range errs {
+		if err != nil {
+			result = append(result, err.Error())
+		}
+	}
+	if len(result) < 1 {
+		return nil
+	}
+	return fmt.Errorf(strings.Join(result, ", "))
 }
