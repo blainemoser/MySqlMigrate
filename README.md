@@ -2,7 +2,7 @@
 
 This package manages database migrations and versioning for MySQL. 
 
-It's best used in conjunction with a command-line programme.
+It's best used in conjunction with a command-line programme; see this [example](https://github.com/blainemoser/exampleMigrateCLI).
 
 ## Usage
 
