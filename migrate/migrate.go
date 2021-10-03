@@ -158,37 +158,48 @@ func (m *Migration) Create(name string) (string, error) {
 		return "", err
 	}
 	name = name + "." + strconv.FormatInt(time.Now().UnixNano(), 10)
-	exists, err := m.exists(name)
-	if err != nil {
+	if err = m.alreadyExists(name); err != nil {
 		return "", err
 	}
-	if exists {
-		return "", fmt.Errorf("migration '%s' already exists", name)
-	}
-	file := []byte(migrateDefault)
-	fullPath := fmt.Sprintf("%s/%s.sql", m.path, name)
-	err = ioutil.WriteFile(fullPath, file, 0700)
-	if err != nil {
+	var fullPath string
+	if fullPath, err = m.getFile(name); err != nil {
 		return "", err
 	}
-	err = m.createMigrationRecord(name)
-	if err != nil {
+	if err = m.createMigrationRecord(name); err != nil {
 		return "", err
 	}
 	return fullPath, nil
 }
 
+func (m *Migration) getFile(name string) (string, error) {
+	file := []byte(migrateDefault)
+	fullPath := fmt.Sprintf("%s/%s.sql", m.path, name)
+	if err := ioutil.WriteFile(fullPath, file, 0700); err != nil {
+		return "", err
+	}
+	return fullPath, nil
+}
+
+func (m *Migration) alreadyExists(name string) error {
+	var exists bool
+	var err error
+	if exists, err = m.exists(name); err != nil {
+		return err
+	}
+	if exists {
+		return fmt.Errorf("migration '%s' already exists", name)
+	}
+	return nil
+}
+
 func (m *Migration) bootstrap() error {
-	err := m.initTable()
-	if err != nil {
+	if err := m.initTable(); err != nil {
 		return err
 	}
-	err = m.initDir()
-	if err != nil {
+	if err := m.initDir(); err != nil {
 		return err
 	}
-	err = m.seed()
-	if err != nil {
+	if err := m.seed(); err != nil {
 		return err
 	}
 	return m.getMigrationsSQL()
@@ -284,11 +295,10 @@ func (m *Migration) exists(name string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	taken, ok := (exists[0]["taken"]).(int64)
-	if !ok {
-		return false, errors.New("error in existence checker")
+	if taken, ok := (exists[0]["taken"]).(int64); ok {
+		return taken > 0, nil
 	}
-	return taken > 0, nil
+	return false, errors.New("error in existence checker")
 }
 
 // Lists files in migrations directory
