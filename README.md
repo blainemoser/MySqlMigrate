@@ -38,12 +38,12 @@ func main() {
 	}
 }
 ```
-To create a migration file, first create a pointer to `migrate.Migration` using [migrate.Make(db \*database.Database, path string)](https://github.com/blainemoser/MySqlMigrate/blob/d4e9073b60967a68466eecd44455bf1fff5b96af/migrate.go#L55). 
+To create a migration file, first create a pointer to `migrate.Migration` using [migrate.Make(db \*database.Database, path string) \*migrate.Migration](https://github.com/blainemoser/MySqlMigrate/blob/d4e9073b60967a68466eecd44455bf1fff5b96af/migrate.go#L55). 
 > The first argument (**\*database.Database**) provides the connection to MySQL. The **path** string indicates the directory to which to save the migration files. If the directory does not exist it will be created, provided the base directory exists.
 
-Second, call [Create(name string)](https://github.com/blainemoser/MySqlMigrate/blob/d4e9073b60967a68466eecd44455bf1fff5b96af/migrate.go#L157) on the pointer. Provide the name of the migration as the sole argument. 
+Second, call [Create(name string) (string, error)](https://github.com/blainemoser/MySqlMigrate/blob/d4e9073b60967a68466eecd44455bf1fff5b96af/migrate.go#L157) on the pointer. Provide the name of the migration as the sole argument. 
 
-> This will not create the relavant schema. This can be achieved by using the function [database.MakeSchemaless()](https://github.com/blainemoser/MySqlDB/blob/6ac74670d7b24b6c82afb21be086c7afc139b384/database.go#L51), followed by [database.Exec("create schema name_of_schema", nil)](https://github.com/blainemoser/MySqlDB/blob/6ac74670d7b24b6c82afb21be086c7afc139b384/database.go#L70).
+> This will not create the relavant schema. This can be achieved by using the function [database.MakeSchemaless(configs \*Configs) (Database, error)](https://github.com/blainemoser/MySqlDB/blob/6ac74670d7b24b6c82afb21be086c7afc139b384/database.go#L51), followed by [database.Exec("create schema name_of_schema", nil)](https://github.com/blainemoser/MySqlDB/blob/6ac74670d7b24b6c82afb21be086c7afc139b384/database.go#L70).
 
 This will create a `.sql` file in the specified directory that looks as follows:
 ```sql
@@ -81,11 +81,11 @@ Do not delete the line `-- [DIRECTION] -- do not alter this line!`, it delineate
 ```go
 err := migrate.Make(&db, "/path/to/migrations/folder").MigrateUp()
 ```
-Use the function [\*migrate.Migration.MigrateUp()](https://github.com/blainemoser/MySqlMigrate/blob/d4e9073b60967a68466eecd44455bf1fff5b96af/migrate.go#L65) to run any migrations that have yet to be executed. 
+Use the function [\*migrate.Migration.MigrateUp() error](https://github.com/blainemoser/MySqlMigrate/blob/d4e9073b60967a68466eecd44455bf1fff5b96af/migrate.go#L65) to run any migrations that have yet to be executed. 
 
 ```go
 err := migrate.Make(&db, "/path/to/migrations/folder").MigrateDown()
 ```
-Use the function [\*migrate.Migration.MigrateDown()](https://github.com/blainemoser/MySqlMigrate/blob/d4e9073b60967a68466eecd44455bf1fff5b96af/migrate.go#L70) to reverse the migrations; this will execute the "down" SQL specified in the migration files.
+Use the function [\*migrate.Migration.MigrateDown() error](https://github.com/blainemoser/MySqlMigrate/blob/d4e9073b60967a68466eecd44455bf1fff5b96af/migrate.go#L70) to reverse the migrations; this will execute the "down" SQL specified in the migration files.
 
 > **Note** that reversing migrations does so in batches; groupings of migrations that were run "up" at the same time. It will not reverse _all_ migrations unless they were all run at the same time.
