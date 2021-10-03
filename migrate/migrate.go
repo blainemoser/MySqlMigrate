@@ -379,7 +379,7 @@ func (m *Migration) findFiles() ([]string, error) {
 
 func getWalkFunc(key int, files *map[int]string, keys *[]int) filepath.WalkFunc {
 	return func(path string, fileInfo os.FileInfo, err error) error {
-		if !fileInfo.IsDir() {
+		if !fileInfo.IsDir() && !strings.Contains(fileInfo.Name(), ".json") {
 			fileSplit := strings.Split(fileInfo.Name(), ".")
 			if len(fileSplit) != 3 {
 				return errors.New("Migration name is malformed: Should be {name}.{timestamp}.sql")
