@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	database "github.com/blainemoser/MySqlDB"
+	"github.com/blainemoser/MySqlDB/database"
 	"github.com/blainemoser/TrySql/trysql"
 )
 

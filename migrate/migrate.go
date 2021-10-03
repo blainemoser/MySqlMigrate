@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	database "github.com/blainemoser/MySqlDB"
+	"github.com/blainemoser/MySqlDB/database"
 
 	_ "github.com/go-sql-driver/mysql"
 )
