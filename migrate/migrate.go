@@ -249,7 +249,7 @@ func (m *Migration) seed() error {
 		errs[i] = m.seedMigrationRecord(migName, i+1)
 	}
 	// Pull list any errors, if any
-	return getErrors(errs)
+	return GetErrors(errs)
 }
 
 func (m *Migration) seedMigrationRecord(name string, id int) error {
@@ -512,7 +512,7 @@ func DirExists(path string) (bool, error) {
 	return true, err
 }
 
-func getErrors(errs []error) error {
+func GetErrors(errs []error) error {
 	if len(errs) < 1 {
 		return nil
 	}
