@@ -71,7 +71,7 @@ Alter the SQL appropriately, for instance:
 -- [DIRECTION] -- do not alter this line!
 -- add your DOWN SQL here
 
-[STATEMENT] DROP TABLE 'users';	
+[STATEMENT] DROP TABLE users;	
 ```
 Execute multiple statements in one migration by using `[STATEMENT]` to separate the queries.
 
