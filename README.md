@@ -88,4 +88,4 @@ err := migrate.Make(&db, "/path/to/migrations/folder").MigrateDown()
 ```
 Use the function [\*migrate.Migration.MigrateDown() error](https://github.com/blainemoser/MySqlMigrate/blob/d4e9073b60967a68466eecd44455bf1fff5b96af/migrate.go#L70) to reverse the migrations; this will execute the "down" SQL specified in the migration files.
 
-> **Note** that migrations are reversed batches (groupings of migrations that were run "up" at the same time). It will not reverse _all_ migrations unless all their "up" statements were executed during the same runtime.
+> **Note** that migrations are reversed in batches (groupings of migrations that were run "up" at the same time). It will not reverse _all_ migrations unless all their "up" statements were executed during the same runtime.
