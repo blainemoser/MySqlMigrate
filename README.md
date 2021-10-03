@@ -14,8 +14,8 @@ package main
 import (
 	"log"
 
-	database "github.com/blainemoser/MySqlDB"
-	migrate "github.com/blainemoser/MySqlMigrate"
+	"github.com/blainemoser/MySqlDB/database"
+	"github.com/blainemoser/MySqlMigrate/migrate"
 )
 
 func main() {
