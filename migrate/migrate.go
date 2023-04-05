@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/blainemoser/MySqlDB/database"
-
 	_ "github.com/go-sql-driver/mysql"
 )
 

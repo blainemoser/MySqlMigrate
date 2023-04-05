@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/blainemoser/MySqlDB/database"
-	"github.com/blainemoser/TrySql/trysql"
+	trysql "github.com/blainemoser/TrySql"
 )
 
 var ts *trysql.TrySql = nil
