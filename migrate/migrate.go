@@ -221,7 +221,7 @@ func (m *Migration) initDir() error {
 		return err
 	}
 	if !exists {
-		return os.Mkdir(m.path, 0777)
+		return os.Mkdir(m.path, 0700)
 	}
 	return nil
 }
