@@ -153,19 +153,19 @@ func (m *Migration) executeMigration(sql string, id int, message string) (mesage
 }
 
 // Create makes a new migration file
-func (m *Migration) Create(schemaName string) (fullPath, message string, err error) {
+func (m *Migration) Create(migrationName string) (fullPath, message string, err error) {
 	err = m.bootstrap()
 	if err != nil {
 		return
 	}
-	schemaName = schemaName + "." + strconv.FormatInt(time.Now().UnixNano(), 10)
-	if err = m.alreadyExists(schemaName); err != nil {
+	migrationName = migrationName + "." + strconv.FormatInt(time.Now().UnixNano(), 10)
+	if err = m.alreadyExists(migrationName); err != nil {
 		return
 	}
-	if fullPath, err = m.getFile(schemaName); err != nil {
+	if fullPath, err = m.getFile(migrationName); err != nil {
 		return
 	}
-	if message, err = m.createMigrationRecord(schemaName); err != nil {
+	if message, err = m.createMigrationRecord(migrationName); err != nil {
 		return
 	}
 	return
