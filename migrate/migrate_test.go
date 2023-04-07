@@ -60,7 +60,7 @@ func TestSeed(t *testing.T) {
 		t.Error(err)
 	}
 	m := Make(db, path)
-	err = m.MigrateUp()
+	_, err = m.MigrateUp()
 	if err != nil {
 		t.Error(err)
 	}
@@ -75,7 +75,7 @@ func TestCreate(t *testing.T) {
 		t.Error(err)
 	}
 	m := Make(db, path)
-	fullPath, err := m.Create(f)
+	fullPath, _, err := m.Create(f)
 	if err != nil {
 		t.Error(err)
 	}
@@ -112,14 +112,14 @@ func runFirstMigration(t *testing.T, path string) {
 		t.Error(err)
 		return
 	}
-	err = Make(db, path).MigrateUp()
+	_, err = Make(db, path).MigrateUp()
 	if err != nil {
 		t.Error(err)
 		return
 	}
 	checkMigratedOne(t)
 	// Try run again; should have nothing to migrate
-	err = Make(db, path).MigrateUp()
+	_, err = Make(db, path).MigrateUp()
 	if err != nil {
 		t.Error(err)
 	}
@@ -131,7 +131,7 @@ func runSecondMigration(t *testing.T, path string) {
 		t.Error(err)
 		return
 	}
-	err = Make(db, path).MigrateUp()
+	_, err = Make(db, path).MigrateUp()
 	if err != nil {
 		t.Error(err)
 		return
@@ -145,7 +145,7 @@ func checkMigrateDown(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	err = Make(db, path).MigrateDown()
+	_, err = Make(db, path).MigrateDown()
 	if err != nil {
 		t.Error(err)
 		return
@@ -155,7 +155,7 @@ func checkMigrateDown(t *testing.T) {
 
 func createMigFile(f, path, migContent string) error {
 	m := Make(db, path)
-	fullPath, err := m.Create(f)
+	fullPath, _, err := m.Create(f)
 	if err != nil {
 		return err
 	}

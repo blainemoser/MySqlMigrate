@@ -61,45 +61,46 @@ func Make(database *database.Database, path string) *Migration {
 	}
 }
 
-func (m *Migration) MigrateUp() error {
+func (m *Migration) MigrateUp() (string, error) {
 	m.direction = true
 	return m.migrate()
 }
 
-func (m *Migration) MigrateDown() error {
+func (m *Migration) MigrateDown() (string, error) {
 	m.direction = false
 	return m.migrate()
 }
 
-func (m *Migration) migrate() error {
+func (m *Migration) migrate() (string, error) {
 	err := m.bootstrap()
 	if err != nil {
-		return err
+		return "", err
 	}
 	return m.runMigrations()
 }
 
-func (m *Migration) runMigrations() error {
+func (m *Migration) runMigrations() (message string, err error) {
 	batchID := time.Time.Unix(time.Now())
 	var sql string
 	var properties map[string]interface{}
-	message := m.getDirectionMessage()
+	var msg string
+	messages := make([]string, 0)
 	for _, id := range m.getSequenceIDs() {
-		if m.migrations[id] == "" {
+		if len(m.migrations[id]) < 1 {
 			continue
 		}
 		sql = m.migrations[id]
 		properties = m.getProperties(id, batchID)
-		err := m.executeMigration(sql, id, message)
-		if err != nil {
-			return err
+		if msg, err = m.executeMigration(sql, id, message); err != nil {
+			return
 		}
-		_, err = m.database.MakeRecord(properties, "migrations").Update("migration_id")
-		if err != nil {
-			return err
+		messages = append(messages, msg)
+		if _, err = m.database.MakeRecord(properties, "migrations").Update("migration_id"); err != nil {
+			return
 		}
 	}
-	return nil
+	message = fmt.Sprintf("%s migrations %s", m.getDirectionMessage(), strings.Join(messages, ", "))
+	return
 }
 
 func (m *Migration) getSequenceIDs() []int {
@@ -133,7 +134,7 @@ func (m *Migration) getDirectionMessage() string {
 	return "Reversed"
 }
 
-func (m *Migration) executeMigration(sql string, id int, message string) error {
+func (m *Migration) executeMigration(sql string, id int, message string) (mesage string, err error) {
 
 	// Split by the individual statements in the query
 	sqlSplit := strings.Split(sql, "[STATEMENT]")
@@ -142,34 +143,32 @@ func (m *Migration) executeMigration(sql string, id int, message string) error {
 		if strings.Replace(sqlString, " ", "", -1) == "" {
 			continue
 		}
-		_, err := m.database.Exec(sqlString, nil)
+		_, err = m.database.Exec(sqlString, nil)
 		if err != nil {
-			return err
+			return
 		}
 	}
-
-	fmt.Println(message + " migration #" + strconv.Itoa(id))
-	return nil
+	message = fmt.Sprintf("%s migration #%d", message, id)
+	return message, nil
 }
 
 // Create makes a new migration file
-func (m *Migration) Create(schemaName string) (string, error) {
-	err := m.bootstrap()
+func (m *Migration) Create(schemaName string) (fullPath, message string, err error) {
+	err = m.bootstrap()
 	if err != nil {
-		return "", err
+		return
 	}
 	schemaName = schemaName + "." + strconv.FormatInt(time.Now().UnixNano(), 10)
 	if err = m.alreadyExists(schemaName); err != nil {
-		return "", err
+		return
 	}
-	var fullPath string
 	if fullPath, err = m.getFile(schemaName); err != nil {
-		return "", err
+		return
 	}
-	if err = m.createMigrationRecord(schemaName); err != nil {
-		return "", err
+	if message, err = m.createMigrationRecord(schemaName); err != nil {
+		return
 	}
-	return fullPath, nil
+	return
 }
 
 func (m *Migration) getFile(name string) (string, error) {
@@ -247,27 +246,27 @@ func (m *Migration) seed() error {
 	var migName string
 	for i := 0; i < len(files); i++ {
 		migName = files[i]
-		errs[i] = m.seedMigrationRecord(migName, i+1)
+		_, err := m.seedMigrationRecord(migName, i+1)
+		errs[i] = err
 	}
 	// Pull list any errors, if any
 	return GetErrors(errs)
 }
 
-func (m *Migration) seedMigrationRecord(name string, id int) error {
+func (m *Migration) seedMigrationRecord(name string, id int) (message string, err error) {
 	// Lookup the migration by the name
 	exists, err := m.exists(name)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if exists {
-		return nil
+		return "", nil
 	}
 	insertID, err := m.database.MakeRecord(m.zeroDayProperties(id, name), "migrations").Create()
 	if err != nil {
-		return err
+		return "", err
 	}
-	fmt.Printf("Migration '%s' with id %d created successfully!\n", name, insertID)
-	return nil
+	return fmt.Sprintf("Migration '%s' with id %d created successfully!", name, insertID), nil
 }
 
 func (m *Migration) zeroDayProperties(id interface{}, name string) map[string]interface{} {
@@ -279,14 +278,13 @@ func (m *Migration) zeroDayProperties(id interface{}, name string) map[string]in
 	}
 }
 
-func (m *Migration) createMigrationRecord(name string) error {
+func (m *Migration) createMigrationRecord(name string) (string, error) {
 	now := time.Time.Unix(time.Now())
 	insertID, err := m.database.MakeRecord(m.zeroDayProperties(now, name), "migrations").Create()
 	if err != nil {
-		return err
+		return "", err
 	}
-	fmt.Printf("Migration '%s' with id %d created successfully!\n", name, insertID)
-	return nil
+	return fmt.Sprintf("Migration '%s' with id %d created successfully!", name, insertID), nil
 }
 
 func (m *Migration) exists(name string) (bool, error) {
