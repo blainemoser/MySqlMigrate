@@ -3,7 +3,6 @@ package migrate
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -16,14 +15,15 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
-const migsQuery = `
+const (
+	MIGS_QUERY = `
 	SELECT migration_id, name 
 	FROM migrations 
 	WHERE migrations.migrated = ? [batch] 
 	ORDER BY migration_id [order];
 `
 
-const migsTable = `CREATE TABLE migrations (
+	MIGS_TABLE = `CREATE TABLE migrations (
 	id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
 	migration_id BIGINT UNSIGNED,
 	batch_id BIGINT UNSIGNED,
@@ -32,14 +32,16 @@ const migsTable = `CREATE TABLE migrations (
 	created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 	updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 )`
-const migrateDefault = `-- add your UP SQL here
+	MIGRATE_DEFAULT = `-- add your UP SQL here
 
 -- [DIRECTION] -- do not alter this line!
 -- add your DOWN SQL here
 
 `
-const lastBatchQuery = "SELECT batch_id FROM migrations where migrated = 1 ORDER BY migration_id DESC LIMIT 1"
-const existsQuery = "SELECT count(*) as taken FROM migrations WHERE name = ?;"
+	LAST_BATCH_QUERY = "SELECT batch_id FROM migrations where migrated = 1 ORDER BY migration_id DESC LIMIT 1"
+	EXISTS_QUERY     = "SELECT count(*) as taken FROM migrations WHERE name = ?;"
+	PERM             = 0700 // this is to give the caller full rights, but no other user or group.
+)
 
 // Migration is a migration
 type Migration struct {
@@ -151,29 +153,29 @@ func (m *Migration) executeMigration(sql string, id int, message string) error {
 }
 
 // Create makes a new migration file
-func (m *Migration) Create(name string) (string, error) {
+func (m *Migration) Create(schemaName string) (string, error) {
 	err := m.bootstrap()
 	if err != nil {
 		return "", err
 	}
-	name = name + "." + strconv.FormatInt(time.Now().UnixNano(), 10)
-	if err = m.alreadyExists(name); err != nil {
+	schemaName = schemaName + "." + strconv.FormatInt(time.Now().UnixNano(), 10)
+	if err = m.alreadyExists(schemaName); err != nil {
 		return "", err
 	}
 	var fullPath string
-	if fullPath, err = m.getFile(name); err != nil {
+	if fullPath, err = m.getFile(schemaName); err != nil {
 		return "", err
 	}
-	if err = m.createMigrationRecord(name); err != nil {
+	if err = m.createMigrationRecord(schemaName); err != nil {
 		return "", err
 	}
 	return fullPath, nil
 }
 
 func (m *Migration) getFile(name string) (string, error) {
-	file := []byte(migrateDefault)
+	file := []byte(MIGRATE_DEFAULT)
 	fullPath := fmt.Sprintf("%s/%s.sql", m.path, name)
-	if err := ioutil.WriteFile(fullPath, file, 0700); err != nil {
+	if err := os.WriteFile(fullPath, file, PERM); err != nil {
 		return "", err
 	}
 	return fullPath, nil
@@ -221,7 +223,7 @@ func (m *Migration) initDir() error {
 		return err
 	}
 	if !exists {
-		return os.Mkdir(m.path, 0700)
+		return os.Mkdir(m.path, PERM)
 	}
 	return nil
 }
@@ -231,7 +233,7 @@ func (m *Migration) hasPathDir() (bool, error) {
 }
 
 func (m *Migration) createTable() error {
-	_, err := m.database.Exec(migsTable, nil)
+	_, err := m.database.Exec(MIGS_TABLE, nil)
 	return err
 }
 
@@ -290,7 +292,7 @@ func (m *Migration) createMigrationRecord(name string) error {
 func (m *Migration) exists(name string) (bool, error) {
 	checks := make([]interface{}, 0)
 	checks = append(checks, name)
-	exists, err := m.database.QueryRaw(existsQuery, checks)
+	exists, err := m.database.QueryRaw(EXISTS_QUERY, checks)
 	if err != nil {
 		return false, err
 	}
@@ -420,7 +422,7 @@ func (m *Migration) getMigs() ([]map[string]interface{}, error) {
 		upOrDown = append(upOrDown, "1")
 		order = "DESC"
 	}
-	query := strings.Replace(migsQuery, "[order]", order, -1)
+	query := strings.Replace(MIGS_QUERY, "[order]", order, -1)
 	if batch != 0 {
 		batchStr = "and batch_id = ?"
 		upOrDown = append(upOrDown, strconv.FormatInt(batch, 10))
@@ -455,7 +457,7 @@ func (m *Migration) getLastBatch() (int64, error) {
 	if m.direction {
 		return 0, nil
 	}
-	result, err := m.database.QueryRaw(lastBatchQuery, nil)
+	result, err := m.database.QueryRaw(LAST_BATCH_QUERY, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -482,7 +484,7 @@ func getBatchID(batchID interface{}) (int64, error) {
 
 // GetFileContents gets file contents from the file at the path
 func GetFileContents(fileName string) (string, error) {
-	file, err := os.OpenFile(fileName, os.O_RDONLY, 0700)
+	file, err := os.OpenFile(fileName, os.O_RDONLY, PERM)
 	if err != nil {
 		return "", err
 	}
