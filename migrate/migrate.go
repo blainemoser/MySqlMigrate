@@ -181,6 +181,7 @@ func (m *Migration) getFile(name string) (string, error) {
 	if err := os.WriteFile(fullPath, file, Permission); err != nil {
 		return "", err
 	}
+	os.Chmod(fullPath, Permission)
 	return fullPath, nil
 }
 
