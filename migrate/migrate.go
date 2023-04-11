@@ -43,6 +43,10 @@ const (
 	PERM             = 0700 // this is to give the caller full rights, but no other user or group.
 )
 
+var (
+	Permission os.FileMode = PERM
+)
+
 // Migration is a migration
 type Migration struct {
 	direction  bool
@@ -174,7 +178,7 @@ func (m *Migration) Create(migrationName string) (fullPath, message string, err 
 func (m *Migration) getFile(name string) (string, error) {
 	file := []byte(MIGRATE_DEFAULT)
 	fullPath := fmt.Sprintf("%s/%s.sql", m.path, name)
-	if err := os.WriteFile(fullPath, file, PERM); err != nil {
+	if err := os.WriteFile(fullPath, file, Permission); err != nil {
 		return "", err
 	}
 	return fullPath, nil
@@ -222,7 +226,7 @@ func (m *Migration) initDir() error {
 		return err
 	}
 	if !exists {
-		return os.Mkdir(m.path, PERM)
+		return os.Mkdir(m.path, Permission)
 	}
 	return nil
 }
@@ -482,7 +486,7 @@ func getBatchID(batchID interface{}) (int64, error) {
 
 // GetFileContents gets file contents from the file at the path
 func GetFileContents(fileName string) (string, error) {
-	file, err := os.OpenFile(fileName, os.O_RDONLY, PERM)
+	file, err := os.OpenFile(fileName, os.O_RDONLY, Permission)
 	if err != nil {
 		return "", err
 	}
