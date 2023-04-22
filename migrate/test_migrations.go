@@ -1,6 +1,7 @@
 package migrate
 
-const testUsersTableMigration = `
+const (
+	TEST_USERS_TABLE_MIG = `
 -- add your UP SQL here
 
 [STATEMENT] CREATE TABLE users (
@@ -20,7 +21,7 @@ const testUsersTableMigration = `
 [STATEMENT] DROP TABLE 'users';	
 `
 
-const testAlterUserTableMigration = `
+	TEST_ALTER_USERS_MIG = `
 -- add your UP SQL here
 [STATEMENT] ALTER TABLE users MODIFY phone VARCHAR(50) NULL;
 
@@ -29,7 +30,7 @@ const testAlterUserTableMigration = `
 [STATEMENT] ALTER TABLE users MODIFY phone BIGINT NULL;
 `
 
-const testTableOne = `
+	TEST_TABLE_ONE = `
 -- add your UP SQL here
 
 [STATEMENT] CREATE TABLE widgets (
@@ -46,7 +47,7 @@ const testTableOne = `
 [STATEMENT] DROP TABLE widgets;	
 `
 
-const testAlterTableOne = `
+	TEST_ALTER_TABLE_ONE = `
 -- add your UP SQL here
 
 [STATEMENT] ALTER TABLE widgets ADD price FLOAT NULL AFTER id;
@@ -56,3 +57,15 @@ const testAlterTableOne = `
 
 [STATEMENT] ALTER TABLE widgets DROP COLUMN price;
 `
+
+	TEST_MIG_TO_BE_REMOVED = `
+-- add your UP SQL here
+
+[STATEMENT] ALTER TABLE widgets ADD pricing_type int(6) NULL AFTER id;
+
+-- [DIRECTION] -- do not alter this line!
+-- add your DOWN SQL here
+
+[STATEMENT] ALTER TABLE widgets DROP COLUMN pricing_type;
+`
+)

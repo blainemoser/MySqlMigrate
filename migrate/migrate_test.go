@@ -1,8 +1,8 @@
 package migrate
 
 import (
+	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"strconv"
@@ -14,17 +14,17 @@ import (
 	trysql "github.com/blainemoser/TrySql"
 )
 
-var ts *trysql.TrySql = nil
+var (
+	ts           *trysql.TrySql     = nil
+	db           *database.Database = nil
+	responseCode int
+)
 
-var db *database.Database = nil
-
-var responseCode int
-
-const testDirectory = "mysql_migrate_testing_directory"
-
-const seededQuery = "select * from migrations where name in (?, ?)"
-
-const testDBName = "van_der_blaine"
+const (
+	TEST_DIR     = "mysql_migrate_testing_directory"
+	SEEDED_QUERY = "select * from migrations where name in (?, ?)"
+	TEST_DB_NAME = "test_mysql_mig"
+)
 
 func TestMain(m *testing.M) {
 	defer recovery()
@@ -75,7 +75,7 @@ func TestCreate(t *testing.T) {
 		t.Error(err)
 	}
 	m := Make(db, path)
-	fullPath, _, err := m.Create(f)
+	fullPath, _, _, err := m.Create(f)
 	if err != nil {
 		t.Error(err)
 	}
@@ -103,11 +103,12 @@ func checkMigrateUp(t *testing.T) {
 		return
 	}
 	runFirstMigration(t, path)
-	runSecondMigration(t, path)
+	fullname := createFaultyMigration(t, path)
+	runSecondMigration(t, path, fullname)
 }
 
 func runFirstMigration(t *testing.T, path string) {
-	err := createMigFile("create_table_widgets", path, testTableOne)
+	err := createMigFile("create_table_widgets", path, TEST_TABLE_ONE)
 	if err != nil {
 		t.Error(err)
 		return
@@ -125,18 +126,31 @@ func runFirstMigration(t *testing.T, path string) {
 	}
 }
 
-func runSecondMigration(t *testing.T, path string) {
-	err := createMigFile("alter_table_widgets_add_price_column", path, testAlterTableOne)
+// This test also tests that the faulty migration has been handled correctly
+func runSecondMigration(t *testing.T, path, faultyMigName string) {
+	err := createMigFile("alter_table_widgets_add_price_column", path, TEST_ALTER_TABLE_ONE)
 	if err != nil {
 		t.Error(err)
 		return
 	}
+
+	// This will try run the migration that has been created as well as the faulty one
 	_, err = Make(db, path).MigrateUp()
 	if err != nil {
 		t.Error(err)
 		return
 	}
+	checkFaultyMigration(t, faultyMigName)
 	checkMigratedTwo(t)
+}
+
+func createFaultyMigration(t *testing.T, path string) string {
+	fullname, err := createMigWithoutFile("alter_table_widgets_add_pricing_type_column", path, TEST_MIG_TO_BE_REMOVED)
+	if err != nil {
+		t.Error(err)
+		return ""
+	}
+	return fullname
 }
 
 func checkMigrateDown(t *testing.T) {
@@ -155,12 +169,22 @@ func checkMigrateDown(t *testing.T) {
 
 func createMigFile(f, path, migContent string) error {
 	m := Make(db, path)
-	fullPath, _, err := m.Create(f)
+	fullPath, _, _, err := m.Create(f)
 	if err != nil {
 		return err
 	}
 	// The user will alter the SQL accordingly...
 	return writeFile(fullPath, migContent)
+}
+
+func createMigWithoutFile(f, path, migContent string) (fullname string, err error) {
+	m := Make(db, path)
+	fullpath, fullname, _, err := m.Create(f)
+	if err != nil {
+		return
+	}
+	err = deleteFile(fullpath)
+	return
 }
 
 func getDatabase() {
@@ -175,12 +199,12 @@ func getDatabase() {
 		panic(err)
 	}
 	db = &dataB
-	db.Exec(fmt.Sprintf("DROP SCHEMA %s", testDBName), nil)
-	_, err = db.Exec(fmt.Sprintf("CREATE SCHEMA %s", testDBName), nil)
+	db.Exec(fmt.Sprintf("DROP SCHEMA %s", TEST_DB_NAME), nil)
+	_, err = db.Exec(fmt.Sprintf("CREATE SCHEMA %s", TEST_DB_NAME), nil)
 	if err != nil {
 		panic(err)
 	}
-	db.SetSchema(testDBName)
+	db.SetSchema(TEST_DB_NAME)
 }
 
 func trySqlTD() {
@@ -227,7 +251,7 @@ func getTestDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("%s/%s", path, testDirectory), nil
+	return fmt.Sprintf("%s/%s", path, TEST_DIR), nil
 }
 
 func seedMigrations(path string) (map[string]string, error) {
@@ -261,8 +285,8 @@ func getFileContent(path string) (map[string]string, error) {
 		path,
 		strconv.FormatInt(lastYear.Unix()+1, 10),
 	)
-	result[createMig] = testUsersTableMigration
-	result[alterMig] = testAlterUserTableMigration
+	result[createMig] = TEST_USERS_TABLE_MIG
+	result[alterMig] = TEST_ALTER_USERS_MIG
 	return result, nil
 }
 
@@ -271,7 +295,11 @@ func getLastYear() time.Time {
 }
 
 func writeFile(name, content string) error {
-	return ioutil.WriteFile(name, []byte(content), 0755)
+	return os.WriteFile(name, []byte(content), 0755)
+}
+
+func deleteFile(name string) error {
+	return os.Remove(name)
 }
 
 func initTestDir() (string, error) {
@@ -306,7 +334,7 @@ func checkTableSeeded(t *testing.T, m *Migration, shouldHave map[string]string) 
 	for name := range shouldHave {
 		escaped = append(escaped, getMigName(name))
 	}
-	rows, err := m.database.QueryRaw(seededQuery, escaped)
+	rows, err := m.database.QueryRaw(SEEDED_QUERY, escaped)
 	if err != nil {
 		t.Error(err)
 		return
@@ -423,6 +451,21 @@ func hasPrice(details []map[string]interface{}) bool {
 	return false
 }
 
+func hasFaultyMigration(details []map[string]interface{}) (bool, error) {
+	if len(details) < 1 {
+		return false, errors.New("failed to run query to check for faulty migration")
+	}
+	for _, row := range details {
+		if row["has_mig"] == nil {
+			continue
+		}
+		if count, ok := row["has_mig"].(int64); ok {
+			return count > 0, nil
+		}
+	}
+	return false, errors.New("query for faulty migration has a problem")
+}
+
 func checkMigratedOne(t *testing.T) {
 	hasWidgetsTable, err := db.CheckHasTable("widgets")
 	if err != nil {
@@ -442,6 +485,21 @@ func checkMigratedTwo(t *testing.T) {
 	}
 	if !hasPrice(details) {
 		t.Errorf("expected 'price' field in the 'widgets' table")
+	}
+}
+
+func checkFaultyMigration(t *testing.T, fullname string) {
+	details, err := db.QueryRaw("select count(*) as has_mig from migrations where name = ?", []interface{}{fullname})
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	hasFault, err := hasFaultyMigration(details)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasFault {
+		t.Errorf("expected faulty migration to have been deleted from the migrations table")
 	}
 }
 

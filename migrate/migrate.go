@@ -16,6 +16,9 @@ import (
 )
 
 const (
+	ORDER_ASC  = "ASC"
+	ORDER_DESC = "DESC"
+
 	MIGS_QUERY = `
 	SELECT migration_id, name 
 	FROM migrations 
@@ -41,27 +44,41 @@ const (
 	LAST_BATCH_QUERY = "SELECT batch_id FROM migrations where migrated = 1 ORDER BY migration_id DESC LIMIT 1"
 	EXISTS_QUERY     = "SELECT count(*) as taken FROM migrations WHERE name = ?;"
 	PERM             = 0700 // this is to give the caller full rights, but no other user or group.
+	REMOVE_FILE      = `DELETE FROM migrations WHERE migrations.name = ?`
 )
 
 var (
 	Permission os.FileMode = PERM
 )
 
-// Migration is a migration
-type Migration struct {
-	direction  bool
-	migrations map[int]string
-	database   *database.Database
-	path       string
-}
+type (
+	// Migration is a migration
+	Migration struct {
+		direction           bool
+		migrations          map[int]string
+		database            *database.Database
+		path                string
+		files               []string
+		migrationCandidates []map[string]interface{}
+		fileFailures        []string
+	}
+	fileNotFound struct {
+		database *database.Database
+		message  string
+		file     string
+	}
+)
 
 // Make creates a new migration
 func Make(database *database.Database, path string) *Migration {
 	return &Migration{
-		direction:  true,
-		migrations: nil,
-		database:   database,
-		path:       path,
+		direction:           true,
+		database:            database,
+		path:                path,
+		files:               make([]string, 0),
+		migrationCandidates: make([]map[string]interface{}, 0),
+		migrations:          make(map[int]string),
+		fileFailures:        make([]string, 0),
 	}
 }
 
@@ -144,7 +161,7 @@ func (m *Migration) executeMigration(sql string, id int, message string) (mesage
 	sqlSplit := strings.Split(sql, "[STATEMENT]")
 
 	for _, sqlString := range sqlSplit {
-		if strings.Replace(sqlString, " ", "", -1) == "" {
+		if len(strings.Replace(sqlString, " ", "", -1)) < 1 {
 			continue
 		}
 		_, err = m.database.Exec(sqlString, nil)
@@ -157,7 +174,7 @@ func (m *Migration) executeMigration(sql string, id int, message string) (mesage
 }
 
 // Create makes a new migration file
-func (m *Migration) Create(migrationName string) (fullPath, message string, err error) {
+func (m *Migration) Create(migrationName string) (fullPath, fullname, message string, err error) {
 	err = m.bootstrap()
 	if err != nil {
 		return
@@ -242,15 +259,14 @@ func (m *Migration) createTable() error {
 }
 
 func (m *Migration) seed() error {
-	files, err := m.findFiles()
-	if err != nil {
+	if err := m.findFiles(); err != nil {
 		return err
 	}
-	errs := make([]error, len(files))
+	errs := make([]error, len(m.files))
 	// result := make([]string, 0)
 	var migName string
-	for i := 0; i < len(files); i++ {
-		migName = files[i]
+	for i := 0; i < len(m.files); i++ {
+		migName = m.files[i]
 		_, err := m.seedMigrationRecord(migName, i+1)
 		errs[i] = err
 	}
@@ -307,78 +323,86 @@ func (m *Migration) exists(name string) (bool, error) {
 
 // Lists files in migrations directory
 func (m *Migration) getMigrationsSQL() error {
-	files, err := m.findFiles()
-	if err != nil {
+	if err := m.findFiles(); err != nil {
 		return err
 	}
-	migs, err := m.getMigs()
-	if err != nil {
+	if err := m.getMigCandidates(); err != nil {
 		return err
 	}
 	// Check the files found against the database
-	result := make(map[int]string)
-	routineFailed := make([]string, 0)
-	for _, v := range migs {
-		err = m.appendContents(&result, &routineFailed, files, v)
+	for _, row := range m.migrationCandidates {
+		err := m.appendContents(row)
 		if err != nil {
-			return err
+			if notFound, ok := err.(*fileNotFound); ok {
+				log.Println(err.Error())
+				m.handleNotFound(notFound)
+				continue
+			} else {
+				return err
+			}
 		}
 	}
-	m.migrations = result
 	return nil
 }
 
-func (m *Migration) getNameAndID(v map[string]interface{}) (string, int64, error) {
+func (m *Migration) getNameAndID(v map[string]interface{}) (name string, id int64, err error) {
 	name, ok := (v["name"]).(string)
 	if !ok {
-		return "", 0, errors.New("name of migration is not a string")
+		err = errors.New("name of migration is not a string")
+		return
 	}
-	if id, ok := (v["migration_id"]).(int64); ok {
-		return name, id, nil
-	} else if id, ok := (v["migration_id"]).(int); ok {
-		return name, int64(id), nil
-	} else if id, ok := (v["migration_id"]).(string); ok {
-		cID, err := strconv.ParseInt(id, 10, 64)
+	if id, ok = (v["migration_id"]).(int64); ok {
+		return
+	} else if idInt, ok := (v["migration_id"]).(int); ok {
+		id = int64(idInt)
+		return
+	} else if idString, ok := (v["migration_id"]).(string); ok {
+		id, err = strconv.ParseInt(idString, 10, 64)
 		if err != nil {
-			return "", 0, fmt.Errorf("migration id is not an integer, %s", err.Error())
+			err = fmt.Errorf("migration id is not an integer, %s", err.Error())
 		}
-		return name, cID, nil
+		return
 	}
-	return "", 0, errors.New("migration id is not an integer")
+	err = errors.New("migration id is not an integer")
+	return
 }
 
-func (m *Migration) appendContents(
-	result *map[int]string,
-	routineFailed *[]string,
-	files []string,
-	value map[string]interface{},
-) error {
-	name, id, err := m.getNameAndID(value)
+func (m *Migration) appendContents(row map[string]interface{}) error {
+	name, id, err := m.getNameAndID(row)
 	if err != nil {
 		return err
 	}
-	numFiles := len(files)
-	nameInFile(name, files, numFiles, routineFailed)
-	if len(*routineFailed) > 0 {
-		return errors.New("Field(s) not in field list: " + strings.Join(*routineFailed, "; "))
+	if err := m.nameInFile(name); err != nil {
+		return err
 	}
-	contents, err := GetFileContents(m.path + "/" + name + ".sql")
+	contents, err := GetFileContents(fmt.Sprintf("%s/%s.sql", m.path, name))
 	if err != nil {
 		return errors.New("Could not get contents for migration " + name + " (id " + strconv.FormatInt(id, 10) + ")")
 	}
-	(*result)[int(id)] = m.getMigContents(contents)
+	m.migrations[int(id)] = m.getMigContents(contents)
 	return nil
 }
 
-func (m *Migration) findFiles() ([]string, error) {
+func (m *Migration) fileNotFoundErr(file string) *fileNotFound {
+	// v2.0.0 - if there are missing files, rather just report a warning and
+	// delete the migration record from the database. This way the folder contents
+	// are the only source of truth
+	return &fileNotFound{
+		database: m.database,
+		file:     file,
+		message:  fmt.Sprintf("the migration file for '%s' was not found and will be ignored", file),
+	}
+}
+
+func (m *Migration) findFiles() error {
 	files := make(map[int]string)
 	keys := make([]int, 0)
 	var key int
 	err := filepath.Walk(m.path, getWalkFunc(key, &files, &keys))
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return fileResult(keys, files)
+	return m.fileResult(keys, files)
 }
 
 func getWalkFunc(key int, files *map[int]string, keys *[]int) filepath.WalkFunc {
@@ -400,38 +424,52 @@ func getWalkFunc(key int, files *map[int]string, keys *[]int) filepath.WalkFunc 
 	}
 }
 
-func fileResult(keys []int, files map[int]string) ([]string, error) {
+func (m *Migration) fileResult(keys []int, files map[int]string) error {
 	sort.Ints(keys)
 	result := make([]string, 0)
 	for _, v := range keys {
-		if files[v] != "" {
+		if len(files[v]) > 0 {
 			result = append(result, files[v])
 		}
 	}
-	return result, nil
+	m.files = result
+	return nil
 }
 
-func (m *Migration) getMigs() ([]map[string]interface{}, error) {
-	upOrDown := make([]interface{}, 0)
-	order := "ASC"
+func (m *Migration) getMigCandidates() error {
+	inserts, query, err := m.getQuery()
+	if err != nil {
+		return err
+	}
+	result, err := m.database.QueryRaw(query, inserts)
+	if err != nil {
+		return err
+	}
+	m.migrationCandidates = result
+	return nil
+}
+
+func (m *Migration) getQuery() (inserts []interface{}, query string, err error) {
+	inserts = make([]interface{}, 0)
 	batch, err := m.getLastBatch()
 	if err != nil {
-		return nil, err
+		return
 	}
+	order := ORDER_ASC
 	batchStr := ""
 	if m.direction {
-		upOrDown = append(upOrDown, "0")
+		inserts = append(inserts, "0")
 	} else {
-		upOrDown = append(upOrDown, "1")
-		order = "DESC"
+		inserts = append(inserts, "1")
+		order = ORDER_DESC
 	}
-	query := strings.Replace(MIGS_QUERY, "[order]", order, -1)
-	if batch != 0 {
+	query = strings.Replace(MIGS_QUERY, "[order]", order, -1)
+	if batch > 0 {
 		batchStr = "and batch_id = ?"
-		upOrDown = append(upOrDown, strconv.FormatInt(batch, 10))
+		inserts = append(inserts, strconv.FormatInt(batch, 10))
 	}
 	query = strings.Replace(query, "[batch]", batchStr, -1)
-	return m.database.QueryRaw(query, upOrDown)
+	return
 }
 
 func (m *Migration) getMigContents(contents string) string {
@@ -443,17 +481,17 @@ func (m *Migration) getMigContents(contents string) string {
 	return result[1]
 }
 
-func nameInFile(name string, files []string, numFiles int, routineFailed *[]string) {
-	nameInFile := false
-	for i := 0; i < numFiles; i++ {
-		if name == files[i] {
-			nameInFile = true
+func (m *Migration) nameInFile(name string) *fileNotFound {
+	ok := false
+	for i := 0; i < len(m.files); i++ {
+		if name == m.files[i] {
+			ok = true
 		}
 	}
-
-	if !nameInFile {
-		*routineFailed = append(*routineFailed, name)
+	if !ok {
+		return m.fileNotFoundErr(name)
 	}
+	return nil
 }
 
 func (m *Migration) getLastBatch() (int64, error) {
@@ -530,4 +568,15 @@ func GetErrors(errs []error) error {
 		return nil
 	}
 	return fmt.Errorf(strings.Join(result, ", "))
+}
+
+func (f fileNotFound) Error() string {
+	return f.message
+}
+
+func (m *Migration) handleNotFound(f *fileNotFound) {
+	_, err := f.database.Exec(REMOVE_FILE, []interface{}{f.file})
+	if err != nil {
+		log.Println("warning: ", err.Error())
+	}
 }
